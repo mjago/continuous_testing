@@ -1,0 +1,134 @@
+* continuous-testing
+** Setup
+*** COMMENT Setup Project
+
+#+BEGIN_SRC emacs-lisp :results silent
+  
+  (defvar ct-project-file-name "ob-el-testing.org")
+  (defvar ct-src-file-name "ob.el")
+  (defvar ct-test-file-name "test-ob.el")
+  (defvar ct-example-file-name "babel.org")
+  
+  (defvar ct-project-dir "~/.emacs.d/martyn/martyn/ob-lilypond/dev/ob-lilypond.org")
+  (defvar ct-src-dir "../../../../org-mode/lisp/")
+  (defvar ct-test-dir "../../../../org-mode/testing/lisp/")
+  (defvar ct-example-dir "../../../../org-mode/testing/examples/")
+  
+  (defvar ct-language "emacs-lisp")
+  
+  (defun ct-language-specific-setup (language)
+    (setq ct-test-window
+          (cond ((string= language  "emacs-lisp")
+                 "*ert*")
+                ((string= language "python")
+                 "*Python*")
+                (t nil))))
+  
+  (defun ct-project ()
+    (interactive)
+    (ct-language-specific-setup ct-language)
+    (delete-other-windows)
+    (find-file (concat ct-example-dir ct-example-file-name))
+    (delete-other-windows)
+    (split-window-horizontally)
+    (windmove-right)
+    (find-file (concat ct-project-dir ct-project-file-name))
+    (find-file (concat ct-project-dir ct-src-dir ct-src-file-name))
+    (windmove-left)
+    (find-file (concat ct-project-dir ct-test-dir ct-test-file-name))
+    (switch-to-buffer ct-test-file-name)
+    (split-window-vertically)
+    (switch-to-buffer ct-test-window)
+    (ct-add-hook)
+    (windmove-down)
+    (switch-to-buffer ct-test-file-name)
+    (global-set-key [f4] 'ct-switch-src-control-file)
+    (message (concat (file-name-sans-extension
+                      ct-project-file-name)
+                     " project setup complete..." )))
+  
+  (defun ct-switch-src-control-file()
+    "Fast route to project control file and back"
+    (interactive)
+    (let ((project-buffer ct-project-file-name)
+          (buffer))
+      (unless (boundp 'ct-last-buffer)
+        (setq ct-last-buffer ct-src-file-name))
+      (if (equal (buffer-name) project-buffer)
+          (setq buffer ct-last-buffer)
+        (setq ct-last-buffer (buffer-name))
+        (setq buffer project-buffer))
+      (message (concat "Switching to " buffer))
+      (switch-to-buffer buffer)))
+  
+  (defun ct-post-save-hook ()
+    "Post Save hook used by Continuous-Testing System"
+    (interactive)
+    (let* ((original-buffer buffer-file-name)
+           (original-window (selected-window))
+           (trigger-file
+            (if (equal 0 (string-match
+                          ct-src-file-name (file-name-nondirectory
+                                            original-buffer))) ct-src-file-name
+              (if (equal 0 (string-match 
+                            ct-test-file-name (file-name-nondirectory original-buffer)))
+                  ct-test-file-name
+                (if (equal 0 (string-match 
+                              ct-example-file-name (file-name-nondirectory original-buffer)))
+                    ct-example-file-name
+                  nil)))))
+      (when trigger-file 
+        (message "CT Trigger is %S" trigger-file)
+        (cond ((string= ct-language  "emacs-lisp")
+               (ert-delete-all-tests)
+               (eval-buffer ct-test-file-name)
+               (eval-buffer ct-src-file-name)
+               (ert t))
+              ((string= ct-language "python")
+               (switch-to-buffer ct-test-file-name)
+               (python-send-buffer)
+               (switch-to-buffer (file-name-nondirectory original-buffer))))
+        (select-window original-window))))
+  
+  (defun ct-add-hook ()
+    (interactive)
+    (save-excursion
+      (set-buffer ct-src-file-name)
+      (save-buffer)
+      (set-buffer ct-test-file-name)
+      (save-buffer))
+    (add-hook 'after-save-hook 'ct-post-save-hook nil nil)
+    (set-buffer ct-src-file-name)
+    (revert-buffer nil t) 
+    (set-buffer ct-test-file-name)
+    (revert-buffer nil t)
+    )
+  
+#+END_SRC
+
+*** Remove Continuous Testing Hook
+
+#+BEGIN_SRC emacs-lisp :results silent
+  
+  (save-excursion
+    (set-buffer ct-src-file-name)
+    (save-buffer)
+    (set-buffer ct-test-file-name)
+    (save-buffer))
+  (remove-hook 'after-save-hook 'ct-post-save-hook nil)
+  (save-excursion
+    (set-buffer ct-src-file-name)
+    (revert-buffer nil t) 
+    (set-buffer ct-test-file-name)
+    (revert-buffer nil t))
+  
+#+END_SRC
+
+*** Display all after save hooks 
+
+#+BEGIN_SRC emacs-lisp :results silent
+
+(message "%S" after-save-hook)
+ 
+#+END_SRC
+
